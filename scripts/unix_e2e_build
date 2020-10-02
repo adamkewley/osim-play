@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+# (before) install package-managed dependencies
+#apt-get install git cmake cmake-curses-gui \
+#                freeglut3-dev libxi-dev libxmu-dev \
+#                liblapack-dev swig python-dev default-jdk
+
+build_type=${build_type:-RelWithDebInfo}
+
+generator=Ninja
+num_build_jobs=$(nproc)
+
+project_dir="${PWD}"
+project_build_dir="${project_dir}/${build_type}-build"
+opensim_project="${project_dir}/opensim-core"
+opensim_build_dir="${opensim_project}/${build_type}-opensim-build"
+opensim_install_dir="${opensim_project}/${build_type}-opensim-install"
+dependencies_project="${opensim_project}/dependencies"
+dependencies_build_dir="${opensim_project}/deps-${build_type}-build"
+dependencies_install_dir="${opensim_project}/deps-${build_type}-install"
+
+# configure + build opensim's dependencies
+mkdir -p "${dependencies_build_dir}"
+cmake -DCMAKE_INSTALL_PREFIX="${dependencies_install_dir}" \
+      -DCMAKE_BUILD_TYPE="${build_type}" \
+      -DCMAKE_GENERATOR="${generator}" \
+      -S "${dependencies_project}" \
+      -B "${dependencies_build_dir}"
+cmake --build "${dependencies_build_dir}"
+
+# configure + build opensim
+mkdir "${opensim_build_dir}"
+cmake -DCMAKE_INSTALL_PREFIX="${opensim_install_dir}" \
+      -DOPENSIM_DEPENDENCIES_DIR="${dependencies_install_dir}" \
+      -DBUILD_JAVA_WRAPPING=OFF \
+      -DCMAKE_BUILD_TYPE="${build_type}" \
+      -DCMAKE_GENERATOR="${generator}" \
+      -S "${opensim_project}" \
+      -B "${opensim_build_dir}"
+cmake --build "${opensim_build_dir}"
+
+# install opensim
+cmake --build "${opensim_build_dir}" --target install
+
+
+# configure + build this project
+mkdir -p "${project_build_dir}"
+cmake -DCMAKE_PREFIX_PATH="${opensim_install_dir}" \
+      -DCMAKE_BUILD_TYPE="${build_type}" \
+      -DCMAKE_GENERATOR="${generator}" \
+      -S "${project_dir}" \
+      -B "${project_build_dir}"
+cmake --build "${project_build_dir}"
