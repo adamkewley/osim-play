@@ -34,6 +34,7 @@ target_compile_features(common INTERFACE
 
 add_executable(OpenSimPartyDemoCable
     src/OpenSimPartyDemoCable.cpp
+    src/ak_wrapcylinder.hpp
 )
 target_link_libraries(OpenSimPartyDemoCable PUBLIC common)
 
@@ -54,6 +55,13 @@ add_executable(study_simbody_4_pendulum
     src/study_simbody_4_pendulum.cpp
 )
 target_link_libraries(study_simbody_4_pendulum PUBLIC common)
+
+
+add_executable(joris_two_block_wrap
+    src/joris_two_block_wrap.cpp
+)
+target_link_libraries(joris_two_block_wrap PUBLIC common)
+
 
 # BUILD LIB PATHS:
 #

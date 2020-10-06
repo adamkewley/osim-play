@@ -28,7 +28,8 @@ THIS DOESN'T WORK YET */
 
 #include <cassert>
 #include <iostream>
-using std::cout; using std::endl;
+using std::cout;
+using std::endl;
 
 using namespace SimTK;
 
@@ -78,7 +79,7 @@ int main() {
     MultibodySystem system;
     SimbodyMatterSubsystem matter(system);
 
-    matter.setShowDefaultGeometry(false);
+    matter.setShowDefaultGeometry(true);
 
     CableTrackerSubsystem cables(system);
     GeneralForceSubsystem forces(system);
@@ -99,7 +100,7 @@ int main() {
     tibia.scaleMesh(30);
 
     // Build a pendulum
-    Body::Rigid pendulumBodyFemur(    MassProperties(1.0, Vec3(0, -5, 0), 
+    Body::Rigid pendulumBodyFemur(    MassProperties(1.0, Vec3(0, -5, 0),
                                     UnitInertia(1).shiftFromCentroid(Vec3(0, 5, 0))));
 
     pendulumBodyFemur.addDecoration(Transform(), DecorativeMesh(femur).setColor(Vec3(0.8, 0.8, 0.8)));
@@ -126,87 +127,110 @@ int main() {
     Real initialPendulumOffset = -0.25*Pi;
 
     Constraint::PrescribedMotion pres(matter, 
-       new Function::Sinusoid(0.25*Pi, 0.2*Pi, 0*initialPendulumOffset), pendulumTibia, MobilizerQIndex(0));
+       new Function::Sinusoid(0.25*Pi, 0.0*Pi, initialPendulumOffset), pendulumTibia, MobilizerQIndex(0));
                
     // Build a wrapping cable path
     CablePath path2(cables, Ground, Vec3(1, 3, 1),             // origin
                             pendulumTibia, Vec3(1, -4, 0));  // termination
     
-    // Create a bicubic surface
-    Vec3 patchOffset(0, -5, -1);
-    Rotation rotZ90(0.5*Pi, ZAxis);
-    Rotation rotX90(0.2*Pi, XAxis);
+    // Bicubic surface
+    if (false) {
+        Vec3 patchOffset(0, -5, -1);
+        Rotation rotZ90(0.5*Pi, ZAxis);
+        Rotation rotX90(0.2*Pi, XAxis);
 
-    Rotation patchRotation = rotZ90 * rotX90 * rotZ90;
-    Transform patchTransform(patchRotation, patchOffset);
+        Rotation patchRotation = rotZ90 * rotX90 * rotZ90;
+        Transform patchTransform(patchRotation, patchOffset);
 
-    Real patchScaleX = 2.0;
-    Real patchScaleY = 2.0;
-    Real patchScaleF = 0.75;
+        Real patchScaleX = 2.0;
+        Real patchScaleY = 2.0;
+        Real patchScaleF = 0.75;
 
-    const int Nx = 4, Ny = 4;
-  
-    const Real xData[Nx] = {  -2, -1, 1, 2 };
-    const Real yData[Ny] = {  -2, -1, 1, 2 };
+        const int Nx = 4, Ny = 4;
 
-    const Real fData[Nx*Ny] = { 2,        3,        3,        1,
-                                0,         1.5,  1.5,        0,
-                                0,        1.5,  1.5,        0,
-                                2,        3,        3,        1    };
+        const Real xData[Nx] = {  -2, -1, 1, 2 };
+        const Real yData[Ny] = {  -2, -1, 1, 2 };
 
-    const Vector x_(Nx,        xData);
-    const Vector y_(Ny,     yData);
-    const Matrix f_(Nx, Ny, fData);
+        const Real fData[Nx*Ny] = { 2,        3,        3,        1,
+                                    0,         1.5,  1.5,        0,
+                                    0,        1.5,  1.5,        0,
+                                    2,        3,        3,        1    };
 
-    Vector x = patchScaleX*x_;
-    Vector y = patchScaleY*y_;
-    Matrix f = patchScaleF*f_; 
+        const Vector x_(Nx,        xData);
+        const Vector y_(Ny,     yData);
+        const Matrix f_(Nx, Ny, fData);
 
-    BicubicSurface patch(x, y, f, 0);
+        Vector x = patchScaleX*x_;
+        Vector y = patchScaleY*y_;
+        Matrix f = patchScaleF*f_;
 
-    Real highRes = 30;
-    Real lowRes  = 1;
+        BicubicSurface patch(x, y, f, 0);
 
-    PolygonalMesh highResPatchMesh = patch.createPolygonalMesh(highRes);
-    PolygonalMesh lowResPatchMesh = patch.createPolygonalMesh(lowRes);
+        Real highRes = 30;
+        Real lowRes  = 1;
 
-   
-    pendulumFemur.addBodyDecoration(patchTransform,
-        DecorativeMesh(highResPatchMesh).setColor(Cyan).setOpacity(.75));
+        PolygonalMesh highResPatchMesh = patch.createPolygonalMesh(highRes);
+        PolygonalMesh lowResPatchMesh = patch.createPolygonalMesh(lowRes);
 
-    pendulumFemur.addBodyDecoration(patchTransform,
-         DecorativeMesh(lowResPatchMesh).setRepresentation(DecorativeGeometry::DrawWireframe));
 
-    Vec3 patchP(-0.5,-1,2), patchQ(-0.5,1,2);
+        pendulumFemur.addBodyDecoration(patchTransform,
+            DecorativeMesh(highResPatchMesh).setColor(Cyan).setOpacity(.75));
 
-    pendulumFemur.addBodyDecoration(patchTransform,
-        DecorativePoint(patchP).setColor(Green).setScale(2));
+        pendulumFemur.addBodyDecoration(patchTransform,
+             DecorativeMesh(lowResPatchMesh).setRepresentation(DecorativeGeometry::DrawWireframe));
 
-    pendulumFemur.addBodyDecoration(patchTransform,
-        DecorativePoint(patchQ).setColor(Red).setScale(2));
+        Vec3 patchP(-0.5,-1,2), patchQ(-0.5,1,2);
 
-     CableObstacle::Surface patchObstacle(path2, pendulumFemur, patchTransform,
-         ContactGeometry::SmoothHeightMap(patch));
-        
-      patchObstacle.setContactPointHints(patchP, patchQ);
-    
-      patchObstacle.setDisabledByDefault(true);
+        pendulumFemur.addBodyDecoration(patchTransform,
+            DecorativePoint(patchP).setColor(Green).setScale(2));
+
+        pendulumFemur.addBodyDecoration(patchTransform,
+            DecorativePoint(patchQ).setColor(Red).setScale(2));
+
+         CableObstacle::Surface patchObstacle(
+             path2,
+             pendulumFemur,
+             patchTransform,
+             ContactGeometry::SmoothHeightMap(patch));
+
+          patchObstacle.setContactPointHints(patchP, patchQ);
+          //patchObstacle.setDisabledByDefault(true);
+    }
+
+    // Cylinder
+    if (true) {
+        CableObstacle::Surface somecylinder{
+            path2,
+            pendulumTibia,
+            Transform{Rotation{0.5*Pi, YAxis}, Vec3{0, -0.5, 0}},
+            ContactGeometry::Cylinder{1.0},
+        };
+        Vec3 a(1.5,-0.5,0), b(1.5,0.5,0);
+        somecylinder.setContactPointHints(a, b);
+    }
+
 
     // Sphere
-    Real      sphRadius = 1.5;
+    if (true) {
+        Real      sphRadius = 1.5;
 
-    Vec3      sphOffset(0, -0.5, 0);
-    Rotation  sphRotation(0*Pi, YAxis);
-    Transform sphTransform(sphRotation, sphOffset);
+        Vec3      sphOffset(0, -0.5, 0);
+        Rotation  sphRotation(0*Pi, YAxis);
+        Transform sphTransform(sphRotation, sphOffset);
 
-    CableObstacle::Surface tibiaSphere(path2, pendulumTibia, sphTransform,
-        ContactGeometry::Sphere(sphRadius));
+        CableObstacle::Surface tibiaSphere(
+                    path2,
+                    pendulumTibia,
+                    sphTransform,
+                    ContactGeometry::Sphere(sphRadius));
 
-    Vec3 sphP(1.5,-0.5,0), sphQ(1.5,0.5,0);
-    tibiaSphere.setContactPointHints(sphP, sphQ);
+        Vec3 sphP(1.5,-0.5,0), sphQ(1.5,0.5,0);
+        tibiaSphere.setContactPointHints(sphP, sphQ);
 
-    pendulumTibia.addBodyDecoration(sphTransform,
-        DecorativeSphere(sphRadius).setColor(Red).setOpacity(0.5));
+        pendulumTibia.addBodyDecoration(sphTransform,
+            DecorativeSphere(sphRadius).setColor(Red).setOpacity(0.5));
+    }
+
 
     // Make cable a spring
     CableSpring cable2(forces, path2, 50., 18., 0.1); 
@@ -240,7 +264,7 @@ int main() {
     ts.initialize(state);
     ShowStuff::showHeading(cout);
 
-    const Real finalTime = 10;
+    const Real finalTime = 40;
     const double startTime = realTime();
     ts.stepTo(finalTime);
     cout << "DONE with " << finalTime 
