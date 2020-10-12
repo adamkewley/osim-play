@@ -127,7 +127,7 @@ int main() {
     Real initialPendulumOffset = -0.25*Pi;
 
     Constraint::PrescribedMotion pres(matter, 
-       new Function::Sinusoid(0.25*Pi, 0.0*Pi, initialPendulumOffset), pendulumTibia, MobilizerQIndex(0));
+       new Function::Sinusoid(1*Pi, 0.0*Pi, initialPendulumOffset), pendulumTibia, MobilizerQIndex(0));
                
     // Build a wrapping cable path
     CablePath path2(cables, Ground, Vec3(1, 3, 1),             // origin
@@ -198,7 +198,7 @@ int main() {
     }
 
     // Cylinder
-    if (true) {
+    if (false) {
         CableObstacle::Surface somecylinder{
             path2,
             pendulumTibia,
@@ -211,7 +211,7 @@ int main() {
 
 
     // Sphere
-    if (true) {
+    if (false) {
         Real      sphRadius = 1.5;
 
         Vec3      sphOffset(0, -0.5, 0);

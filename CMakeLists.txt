@@ -62,6 +62,11 @@ add_executable(joris_two_block_wrap
 )
 target_link_libraries(joris_two_block_wrap PUBLIC common)
 
+add_executable(joris_in-simbody
+    src/joris_in-simbody.cpp
+)
+target_link_libraries(joris_in-simbody PRIVATE common)
+
 
 # BUILD LIB PATHS:
 #
