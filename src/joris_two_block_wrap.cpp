@@ -19,7 +19,6 @@
  * -------------------------------------------------------------------------- */
 
 #include <OpenSim/OpenSim.h>
-#include "ak_wrapcylinder.hpp"
 
 using namespace OpenSim;
 
@@ -76,10 +75,15 @@ int main(int argc, char** arv) {
     // MUSCLES AND SPRINGS
     double mclFmax = 4000., mclOptFibLen = 0.55, mclTendonSlackLen = 0.5,
             mclPennAng = 0.;
+    /*
     auto muscle = new Thelen2003Muscle("muscle", mclFmax, mclOptFibLen,
                                        mclTendonSlackLen, mclPennAng);
     muscle->addNewPathPoint("origin", *bodyLeft, Vec3(0, bodySideLength / 2, 0));
     muscle->addNewPathPoint("insertion", *bodyRight, Vec3(0, bodySideLength / 2, 0));
+    */
+    auto spring = new PathSpring("path_spring", 1.0, 50, 0.1);
+    spring->updGeometryPath().appendNewPathPoint("origin", *bodyLeft, Vec3(0, bodySideLength / 2, 0));
+    spring->updGeometryPath().appendNewPathPoint("insertion", *bodyRight, Vec3(0, bodySideLength / 2, 0));
 
     auto springToLeft = new PointToPointSpring(model.getGround(), Vec3(0),
                                                *bodyLeft, Vec3(0, -bodySideLength / 2, 0), 100, 0.5);
@@ -88,7 +92,7 @@ int main(int argc, char** arv) {
                                                 *bodyRight, Vec3(0, -bodySideLength / 2, 0), 100, 0.5);
     springToRight->setName("springToRight");
 
-    model.addForce(muscle);
+
     model.addForce(springToLeft);
     model.addForce(springToRight);
 
@@ -112,17 +116,24 @@ int main(int argc, char** arv) {
     bodyGround->addComponent(wrappingFrame);
 
     // Configure the vastus muscle to wrap over the patella.
-    muscle->updGeometryPath().addPathWrap(*wrapSurface);
+    spring->updGeometryPath().addPathWrap(*wrapSurface);
+
+    //auto spring = new PathSpring("path_spring", 1.0, 50, 0.1);
+    //spring->updGeometryPath() = *muscle->getGeometryPath().clone();
+//        spring->finalizeConnections(model);
+//    model.addForce(muscle);
+    model.addForce(spring);
 
 
 
     // CONTROLLER
+    /*
     auto brain = new PrescribedController();
     brain->setActuators(model.updActuators());
     double t[5] = {0.0, 1.0, 2.0, 3.0, 4.0}, x[5] = {0.0, 1.0, 0.0, 0.5, 0.0};
     auto controlFunction = new PiecewiseConstantFunction(5, t, x);
     brain->prescribeControlForActuator("muscle", controlFunction);
-    model.addController(brain);
+    model.addController(brain);*/
 
     // Attach geometry to the bodies and enable the visualizer.
     auto bodyLeftGeometry = new Brick(Vec3(bodySideLength / 2.));
