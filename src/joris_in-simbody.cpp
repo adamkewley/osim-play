@@ -1,5 +1,7 @@
 #include "Simbody.h"
 
+#include <fstream>
+
 using SimTK::MultibodySystem;
 using SimTK::SimbodyMatterSubsystem;
 using SimTK::GeneralForceSubsystem;
@@ -23,15 +25,40 @@ using SimTK::ContactGeometry;
 using SimTK::YAxis;
 using SimTK::ZAxis;
 using SimTK::Constraint;
+using SimTK::PeriodicEventReporter;
+using SimTK::Real;
 
+struct Position_recorder final : public PeriodicEventReporter {
+    MultibodySystem const& mbs;
+    MobilizedBody::Slider const& lhs;
+    MobilizedBody::Slider const& rhs;
+    mutable std::ofstream ofile;  // mutable because SimTK lol
 
-/* give the left block some motion
-auto pm1 = Constraint::PrescribedMotion{
-    matter,
-    new SimTK::Function::Sinusoid(0.25*Pi, 1.5*Pi, 0.4*Pi),
-    slider_left,
-    SimTK::MobilizerQIndex(0),
-}; */
+    Position_recorder(Real interval,
+                      std::string path,
+                      MultibodySystem const& _mbs,
+                      MobilizedBody::Slider const& _lhs,
+                      MobilizedBody::Slider const& _rhs) :
+        PeriodicEventReporter{interval},
+        mbs{_mbs},
+        lhs{_lhs},
+        rhs{_rhs},
+        ofile{[&]() {
+            auto f = std::ofstream{};
+            f.exceptions(std::ofstream::failbit);
+            f.open(path);
+            return f;
+        }()} {
+
+        ofile << "time,lhs,rhs" << std::endl;
+    }
+
+    void handleEvent(const State& s) const override {
+        ofile << s.getTime() << ","
+              << lhs.getQ(s) << ","
+              << rhs.getQ(s) << std::endl;
+    }
+};
 
 int main() {
     auto system = MultibodySystem{};
@@ -144,7 +171,18 @@ int main() {
     system.setUseUniformBackground(true);
     auto visualizer = Visualizer{system};
     visualizer.setShowFrameRate(true);
-    system.addEventReporter(new Visualizer::Reporter{visualizer, 0.01});
+    system.addEventReporter(new Visualizer::Reporter{
+                                visualizer,
+                                0.01
+                            });
+    system.addEventReporter(new Position_recorder{
+                                0.01,
+                                "/tmp/simbody_version.csv",
+                                system,
+                                slider_left,
+                                slider_right
+                            });
+
     auto silo = SimTK::Visualizer::InputSilo{};
     visualizer.addInputListener(&silo);
 
@@ -153,6 +191,7 @@ int main() {
     help.setIsScreenText(true);
     visualizer.addDecoration(SimTK::MobilizedBodyIndex(0), SimTK::Vec3(0), help);
     visualizer.setShowSimTime(true);
+    visualizer.setMode(Visualizer::RealTime);
 
     // set up system
     system.realizeTopology();
