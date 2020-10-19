@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+for w in $(xdotool search --name "joris"); do
+    xdotool windowactivate $w && xdotool key "a"
+done
