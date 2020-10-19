@@ -20,7 +20,53 @@
 
 #include <OpenSim/OpenSim.h>
 
+#include <fstream>
+
 using namespace OpenSim;
+using SimTK::PeriodicEventReporter;
+using SimTK::MultibodySystem;
+using SimTK::MobilizedBody;
+using SimTK::Real;
+using SimTK::State;
+
+struct Position_analysis final : public Analysis {
+    SliderJoint const& lhs;
+    SliderJoint const& rhs;
+    std::string path;
+    std::ofstream ofile;
+
+    Position_analysis(std::string _path,
+                      SliderJoint const& _lhs,
+                      SliderJoint const& _rhs) :
+        lhs{_lhs},
+        rhs{_rhs},
+        path{std::move(_path)},
+        ofile{[&]() {
+            auto f = std::ofstream{};
+            f.exceptions(std::ofstream::failbit);
+            f.open(path);
+            return f;
+        }()} {
+
+        ofile << "time,lhs,rhs" << std::endl;
+    }
+
+    int step(const SimTK::State& s, int stepNumber) override {
+        ofile << s.getTime() << ","
+              << lhs.getCoordinate().getValue(s) << ","
+              << rhs.getCoordinate().getValue(s) << std::endl;
+        return 0;
+    }
+
+    Position_analysis* clone() const {
+        return new Position_analysis{path, lhs, rhs};
+    }
+
+    const std::string& getConcreteClassName() const {
+        static std::string name = "Position_analysis";
+        return name;
+    }
+};
 
 int main(int argc, char** arv) {
     using SimTK::Vec3;
@@ -153,12 +199,20 @@ int main(int argc, char** arv) {
     //shoulder->getCoordinate().setLocked(state, true);
     model.equilibrateMuscles(state);
 
+    auto* analysis = new Position_analysis{
+            "/tmp/opensim_version.csv",
+            *sliderLeft,
+            *sliderRight,
+    };
+    model.addAnalysis(analysis);
+
     // Configure the visualizer.
     {
         model.updMatterSubsystem().setShowDefaultGeometry(true);
         SimTK::Visualizer& viz = model.updVisualizer().updSimbodyVisualizer();
         viz.setBackgroundType(viz.SolidColor);
         viz.setBackgroundColor(SimTK::White);
+        viz.setMode(SimTK::Visualizer::RealTime);
     }
 
     // Simulate.
