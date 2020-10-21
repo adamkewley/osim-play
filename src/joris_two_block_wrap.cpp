@@ -68,9 +68,69 @@ struct Position_analysis final : public Analysis {
     }
 };
 
-int main(int argc, char** arv) {
+static double safe_parse_double(char const* s) {
+    char* end;
+    double v = strtod(s, &end);
+    if (*end != '\0' or v == HUGE_VAL or v == -HUGE_VAL) {
+        std::stringstream ss;
+        ss << "numeric parsing error: could not parse '" << s << "' as a double";
+        throw std::runtime_error{ss.str()};
+    }
+    return v;
+}
+
+static const char ox_arg[] = "--offset-x=";
+static const char oy_arg[] = "--offset-y=";
+static const char oz_arg[] = "--offset-z=";
+static const char record_arg[] = "--record-to=";
+static const char no_viz_arg[] = "--no-visualizer";
+static const char appname[] = "joris_in-simbody";
+static const char help_arg[] = "--help";
+static const char usage[] =
+R"(usage : joris_in-simbody [--offset-x=<val>] [--offset-y=<val>] [--offset-z=<val>]
+                         [--record-to=<path>] [--no-visualizer] [--help])";
+
+int main(int argc, char** argv) {
     using SimTK::Vec3;
     using SimTK::Inertia;
+
+    auto body_offset = Vec3{0.4, 0.0, 0.0};
+    std::string record_to = "";
+    bool visualize = true;
+
+    // basic CLI parsing
+    {
+        char** args = argv + 1;
+        for (int nargs = argc - 1; nargs > 0; --nargs, ++args) {
+            char const* arg = *args;
+
+            if (strncmp(arg, ox_arg , sizeof(ox_arg)-1) == 0) {
+                char const* val = arg + (sizeof(ox_arg)-1);
+                double v = safe_parse_double(val);
+                body_offset.set(0, v);
+            } else if (strncmp(arg, oy_arg, sizeof(oy_arg)-1) == 0) {
+                char const* val = arg + (sizeof(oy_arg)-1);
+                double v = safe_parse_double(val);
+                body_offset.set(1, v);
+            } else if (strncmp(arg, oz_arg, sizeof(oz_arg)-1) == 0) {
+                char const* val = arg + (sizeof(oz_arg)-1);
+                double v = safe_parse_double(val);
+                body_offset.set(2, v);
+            } else if (strncmp(arg, record_arg, sizeof(record_arg)-1) == 0)  {
+                record_to = std::string{arg + (sizeof(record_arg)-1)};
+            } else if (strcmp(arg, no_viz_arg) == 0) {
+                visualize = false;
+            } else if (strcmp(arg, help_arg) == 0) {
+                std::cout << usage << std::endl;
+                return 0;
+            } else {
+                std::cerr << appname << ": unrecognized argument '" << arg << "'" << std::endl;
+                std::cerr << std::endl;
+                std::cerr << usage << std::endl;
+                return -1;
+            }
+        }
+    }
 
     // Create a new OpenSim model on earth.
     auto model = Model();
@@ -93,7 +153,7 @@ int main(int argc, char** arv) {
     // Attach the pelvis to ground with a vertical slider joint, and attach the
     // pelvis, thigh, and shank bodies to each other with pin joints.
     Vec3 sliderOrientation(0, 0, SimTK::Pi / 2.);
-    Vec3 bodyOffset(0.4, 0, 0);
+    Vec3 bodyOffset = body_offset;
     auto sliderLeft = new SliderJoint("sliderLeft", model.getGround(), bodyOffset,
                                       sliderOrientation, *bodyLeft, Vec3(0), sliderOrientation);
     auto sliderRight = new SliderJoint("sliderRight", model.getGround(), -bodyOffset,
@@ -190,8 +250,6 @@ int main(int argc, char** arv) {
     bodyRightGeometry->setColor(Vec3(0.8, 0.1, 0.1));
     bodyRight->attachGeometry(bodyRightGeometry);
 
-    model.setUseVisualizer(true);
-
     // Configure the model.
     SimTK::State& state = model.initSystem();
 
@@ -199,15 +257,17 @@ int main(int argc, char** arv) {
     //shoulder->getCoordinate().setLocked(state, true);
     model.equilibrateMuscles(state);
 
-    auto* analysis = new Position_analysis{
-            "/tmp/opensim_version.csv",
+    if (not record_to.empty()) {
+        auto* analysis = new Position_analysis{
+            record_to,
             *sliderLeft,
             *sliderRight,
-    };
-    model.addAnalysis(analysis);
+        };
+        model.addAnalysis(analysis);
+    }
 
-    // Configure the visualizer.
-    {
+    if (visualize) {
+        model.setUseVisualizer(true);
         model.updMatterSubsystem().setShowDefaultGeometry(true);
         SimTK::Visualizer& viz = model.updVisualizer().updSimbodyVisualizer();
         viz.setBackgroundType(viz.SolidColor);
@@ -215,7 +275,6 @@ int main(int argc, char** arv) {
         viz.setMode(SimTK::Visualizer::RealTime);
     }
 
-    // Simulate.
     simulate(model, state, 10.0);
 
     return 0;

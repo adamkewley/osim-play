@@ -60,7 +60,67 @@ struct Position_recorder final : public PeriodicEventReporter {
     }
 };
 
-int main() {
+static double safe_parse_double(char const* s) {
+    char* end;
+    double v = strtod(s, &end);
+    if (*end != '\0' or v == HUGE_VAL or v == -HUGE_VAL) {
+        std::stringstream ss;
+        ss << "numeric parsing error: could not parse '" << s << "' as a double";
+        throw std::runtime_error{ss.str()};
+    }
+    return v;
+}
+
+static const char ox_arg[] = "--offset-x=";
+static const char oy_arg[] = "--offset-y=";
+static const char oz_arg[] = "--offset-z=";
+static const char record_arg[] = "--record-to=";
+static const char no_viz_arg[] = "--no-visualizer";
+static const char appname[] = "joris_in-simbody";
+static const char help_arg[] = "--help";
+static const char usage[] =
+R"(usage : joris_in-simbody [--offset-x=<val>] [--offset-y=<val>] [--offset-z=<val>]
+                         [--record-to=<path>] [--no-visualizer] [--help])";
+
+int main(int argc, char** argv) {
+    auto body_offset = Vec3{0.4, 0.0, 0.0};
+    std::string record_to = "";
+    bool visualize = true;
+
+    // basic CLI parsing
+    {
+        char** args = argv + 1;
+        for (int nargs = argc - 1; nargs > 0; --nargs, ++args) {
+            char const* arg = *args;
+
+            if (strncmp(arg, ox_arg , sizeof(ox_arg)-1) == 0) {
+                char const* val = arg + (sizeof(ox_arg)-1);
+                double v = safe_parse_double(val);
+                body_offset.set(0, v);
+            } else if (strncmp(arg, oy_arg, sizeof(oy_arg)-1) == 0) {
+                char const* val = arg + (sizeof(oy_arg)-1);
+                double v = safe_parse_double(val);
+                body_offset.set(1, v);
+            } else if (strncmp(arg, oz_arg, sizeof(oz_arg)-1) == 0) {
+                char const* val = arg + (sizeof(oz_arg)-1);
+                double v = safe_parse_double(val);
+                body_offset.set(2, v);
+            } else if (strncmp(arg, record_arg, sizeof(record_arg)-1) == 0)  {
+                record_to = std::string{arg + (sizeof(record_arg)-1)};
+            } else if (strcmp(arg, no_viz_arg) == 0) {
+                visualize = false;
+            } else if (strcmp(arg, help_arg) == 0) {
+                std::cout << usage << std::endl;
+                return 0;
+            } else {
+                std::cerr << appname << ": unrecognized argument '" << arg << "'" << std::endl;
+                std::cerr << std::endl;
+                std::cerr << usage << std::endl;
+                return -1;
+            }
+        }
+    }
+
     auto system = MultibodySystem{};
     auto matter = SimbodyMatterSubsystem{system};
     auto forces = GeneralForceSubsystem{system};
@@ -78,7 +138,6 @@ int main() {
     auto center_of_mass = Vec3{0.0, 0.0, 0.0};
     auto body_inertia = body_mass * Inertia::brick(Vec3{body_side_len / 2.0});
     auto slider_orientation = Rotation{Pi/2.0, ZAxis};
-    auto body_offset = Vec3{0.4, 0.0, 0.0};
 
     // left mass
     auto body_left = Body::Rigid{
@@ -169,43 +228,54 @@ int main() {
     // set up visualization to match OpenSim (but without OpenSim) see:
     //     OpenSim: ModelVisualizer.cpp + SimulationUtilities.cpp
     system.setUseUniformBackground(true);
-    auto visualizer = Visualizer{system};
-    visualizer.setShowFrameRate(true);
-    system.addEventReporter(new Visualizer::Reporter{
-                                visualizer,
-                                0.01
-                            });
-    system.addEventReporter(new Position_recorder{
-                                0.01,
-                                "/tmp/simbody_version.csv",
-                                system,
-                                slider_left,
-                                slider_right
-                            });
 
-    auto silo = SimTK::Visualizer::InputSilo{};
-    visualizer.addInputListener(&silo);
+    if (not record_to.empty()) {
+        system.addEventReporter(new Position_recorder{
+                                    0.01,
+                                    record_to,
+                                    system,
+                                    slider_left,
+                                    slider_right
+                                });
+    }
 
-    auto help =
-        SimTK::DecorativeText("Press any key to start a new simulation; ESC to quit.");
-    help.setIsScreenText(true);
-    visualizer.addDecoration(SimTK::MobilizedBodyIndex(0), SimTK::Vec3(0), help);
-    visualizer.setShowSimTime(true);
-    visualizer.setMode(Visualizer::RealTime);
+    if (visualize) {
+        auto visualizer = Visualizer{system};
+        system.addEventReporter(new Visualizer::Reporter{
+                                    visualizer,
+                                    0.01
+                                });
+        visualizer.setShowFrameRate(true);
+        auto silo = SimTK::Visualizer::InputSilo{};
+        visualizer.addInputListener(&silo);
+        auto help =
+            SimTK::DecorativeText("Press any key to start a new simulation; ESC to quit.");
+        help.setIsScreenText(true);
+        visualizer.addDecoration(SimTK::MobilizedBodyIndex(0), SimTK::Vec3(0), help);
+        visualizer.setShowSimTime(true);
+        visualizer.setMode(Visualizer::RealTime);
 
-    // set up system
-    system.realizeTopology();
-    State s = system.getDefaultState();
-    visualizer.drawFrameNow(s);
+        // set up system
+        system.realizeTopology();
+        State s = system.getDefaultState();
+        visualizer.drawFrameNow(s);
 
-    while (true) {
-        silo.clear(); // Ignore any previous key presses.
-        unsigned key, modifiers;
-        silo.waitForKeyHit(key, modifiers);
-        if (key == SimTK::Visualizer::InputListener::KeyEsc) {
-            break;
+        while (true) {
+            silo.clear(); // Ignore any previous key presses.
+            unsigned key, modifiers;
+            silo.waitForKeyHit(key, modifiers);
+            if (key == SimTK::Visualizer::InputListener::KeyEsc) {
+                break;
+            }
+            // set up simulation (integrator etc.)
+            auto integrator = RungeKuttaMersonIntegrator{system};
+            auto time_stepper = SimTK::TimeStepper{system, integrator};
+            time_stepper.initialize(s);
+            time_stepper.stepTo(10.0);
         }
-        // set up simulation (integrator etc.)
+    } else {
+        system.realizeTopology();
+        State s = system.getDefaultState();
         auto integrator = RungeKuttaMersonIntegrator{system};
         auto time_stepper = SimTK::TimeStepper{system, integrator};
         time_stepper.initialize(s);
