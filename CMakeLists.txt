@@ -57,15 +57,15 @@ add_executable(study_simbody_4_pendulum
 target_link_libraries(study_simbody_4_pendulum PUBLIC common)
 
 
-add_executable(joris_two_block_wrap
-    src/joris_two_block_wrap.cpp
+add_executable(opensim_wrapping
+    src/opensim_wrapping.cpp
 )
-target_link_libraries(joris_two_block_wrap PUBLIC common)
+target_link_libraries(opensim_wrapping PRIVATE common)
 
-add_executable(joris_in-simbody
-    src/joris_in-simbody.cpp
+add_executable(simbody_wrapping
+    src/simbody_wrapping.cpp
 )
-target_link_libraries(joris_in-simbody PRIVATE common)
+target_link_libraries(simbody_wrapping PRIVATE common)
 
 
 # BUILD LIB PATHS:
