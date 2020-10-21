@@ -250,6 +250,10 @@ int main(int argc, char** argv) {
     bodyRightGeometry->setColor(Vec3(0.8, 0.1, 0.1));
     bodyRight->attachGeometry(bodyRightGeometry);
 
+    if (visualize) {
+        model.setUseVisualizer(true);
+    }
+
     // Configure the model.
     SimTK::State& state = model.initSystem();
 
@@ -267,7 +271,6 @@ int main(int argc, char** argv) {
     }
 
     if (visualize) {
-        model.setUseVisualizer(true);
         model.updMatterSubsystem().setShowDefaultGeometry(true);
         SimTK::Visualizer& viz = model.updVisualizer().updSimbodyVisualizer();
         viz.setBackgroundType(viz.SolidColor);
