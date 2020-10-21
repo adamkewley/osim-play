@@ -79,49 +79,155 @@ static double safe_parse_double(char const* s) {
     return v;
 }
 
-static const char ox_arg[] = "--offset-x=";
-static const char oy_arg[] = "--offset-y=";
-static const char oz_arg[] = "--offset-z=";
+static const char lhs_arg[] = "--lhs=";
+static const char rhs_arg[] = "--rhs=";
+static const char geometry_arg[] = "--geometry=";
+static const char wrapping_quadrant_arg[] = "--wrapping-quadrant=";
+static const char final_time_arg[] = "--final-time=";
 static const char record_arg[] = "--record-to=";
 static const char no_viz_arg[] = "--no-visualizer";
-static const char appname[] = "joris_in-simbody";
 static const char help_arg[] = "--help";
+static const char appname[] = "opensim_wrapping";
 static const char usage[] =
-R"(usage : joris_in-simbody [--offset-x=<val>] [--offset-y=<val>] [--offset-z=<val>]
-                         [--record-to=<path>] [--no-visualizer] [--help])";
+R"(usage: opensim_wrapping [--lhs=[<x>,<y>,<z>]] [--rhs=[<x>,<y>,<z>]]
+                        [--geometry=<geometry>] [--wrapping-quadrant=<direction>]
+                        [--final-time=<secs>] [--record-to=<path>]
+                        [--no-visualizer] [--help])";
+static const char help[] =
+R"(OPTIONS
+    --lhs=[<x>,<y>,<z>]
+        Coordinates of the left-hand vertical slider (default: [-0.4, 0.0, 0.0])
+
+    --rhs=[<x>,<y>,<z>]
+        Coordinates of the right-hand vertical slider (default: [+0.4, 0.0, 0.0])
+
+    --geometry=<geometry>
+        Specify wrapping geometry. Allowed <geometry> inputs:
+
+            cylinder[<radius>]
+            ellipsoid[<x>,<y>,<z>]
+
+        Defaults to: cylinder[0.08]
+
+    --wrapping-quadrant=<quadrant>
+        Set the wrapping quadrant for the wrapping geometry (default: +y)
+
+    --final-time=<secs>
+        Set the final simulation time in seconds (default: 10)
+
+    --record-to=<path>
+        Record a CSV containing the positions of the sliding masses to <path>
+
+    --no-visualizer
+        Disable the GUI visualizer
+
+    --help
+        Show this help
+)";
 
 int main(int argc, char** argv) {
     using SimTK::Vec3;
     using SimTK::Inertia;
 
-    auto body_offset = Vec3{0.4, 0.0, 0.0};
+    auto lhs_offset = Vec3{-0.4, 0.0, 0.0};
+    auto rhs_offset = Vec3{+0.4, 0.0, 0.0};
     std::string record_to = "";
     bool visualize = true;
+    std::unique_ptr<WrapObject> wrapSurface = nullptr;
+    std::string wrapping_quadrant = "+y";
+    double final_time = 10;
 
-    // basic CLI parsing
+    // default wrap surf
+    {
+        auto c = new WrapCylinder();
+        c->setAllPropertiesUseDefault(true);
+        c->set_radius(0.08);
+        c->set_length(1);
+        c->set_xyz_body_rotation(Vec3(0.0, 0.0, 0.0));
+        c->setName("wrapSurface");
+
+        wrapSurface.reset(c);
+    }
+
     {
         char** args = argv + 1;
         for (int nargs = argc - 1; nargs > 0; --nargs, ++args) {
             char const* arg = *args;
 
-            if (strncmp(arg, ox_arg , sizeof(ox_arg)-1) == 0) {
-                char const* val = arg + (sizeof(ox_arg)-1);
-                double v = safe_parse_double(val);
-                body_offset.set(0, v);
-            } else if (strncmp(arg, oy_arg, sizeof(oy_arg)-1) == 0) {
-                char const* val = arg + (sizeof(oy_arg)-1);
-                double v = safe_parse_double(val);
-                body_offset.set(1, v);
-            } else if (strncmp(arg, oz_arg, sizeof(oz_arg)-1) == 0) {
-                char const* val = arg + (sizeof(oz_arg)-1);
-                double v = safe_parse_double(val);
-                body_offset.set(2, v);
+            if (strncmp(arg, lhs_arg , sizeof(lhs_arg)-1) == 0) {
+                char const* val = arg + (sizeof(lhs_arg)-1);
+                std::cmatch m;
+                std::regex patt{R"(\[([^,]+),([^,]+),([^\]]+)\])"};
+
+                if (std::regex_match(val, m, patt)) {
+                    double x = safe_parse_double(m[1].str().c_str());
+                    double y = safe_parse_double(m[2].str().c_str());
+                    double z = safe_parse_double(m[3].str().c_str());
+                    lhs_offset = Vec3{x, y, z};
+                } else {
+                    std::cerr << appname << ": invalid coordiate specified for '" << arg << "'" << std::endl;
+                    return -1;
+                }
+            } else if (strncmp(arg, rhs_arg, sizeof(rhs_arg)-1) == 0) {
+                char const* val = arg + (sizeof(rhs_arg)-1);
+                std::cmatch m;
+                std::regex patt{R"(\[([^,]+),([^,]+),([^\]]+)\])"};
+
+                if (std::regex_match(val, m, patt)) {
+                    double x = safe_parse_double(m[1].str().c_str());
+                    double y = safe_parse_double(m[2].str().c_str());
+                    double z = safe_parse_double(m[3].str().c_str());
+                    rhs_offset = Vec3{x, y, z};
+                } else {
+                    std::cerr << appname << ": invalid coordiate specified for '" << arg << "'" << std::endl;
+                    return -1;
+                }
+            } else if (strncmp(arg, geometry_arg, sizeof(geometry_arg)-1) == 0) {
+                char const* val = arg + sizeof(geometry_arg)-1;
+                std::cmatch m;
+
+                std::regex cylinder_patt{R"(cylinder\[([^\]]+)\])"};
+                std::regex ellipsoid_patt{R"(ellipsoid\[([^,]+),([^,]+),([^\]]+)\])"};
+
+                if (std::regex_match(val, m, cylinder_patt)) {
+                    double r = safe_parse_double(m[1].str().c_str());
+
+                    auto c = new WrapCylinder{};
+                    c->setAllPropertiesUseDefault(true);
+                    c->set_radius(r);
+                    c->set_length(1);
+                    c->set_xyz_body_rotation(Vec3(0.0, 0.0, 0.0));
+                    c->setName("wrapSurface");
+
+                    wrapSurface.reset(c);
+                } else if (std::regex_match(val, m, ellipsoid_patt)) {
+                    double x = safe_parse_double(m[1].str().c_str());
+                    double y = safe_parse_double(m[2].str().c_str());
+                    double z = safe_parse_double(m[3].str().c_str());
+
+                    auto e = new WrapEllipsoid{};
+                    e->setAllPropertiesUseDefault(true);
+                    e->set_dimensions(Vec3{x, y, z});
+                    e->set_xyz_body_rotation(Vec3(0.0, 0.0, 0.0));
+                    e->setName("wrapSurface");
+
+                    wrapSurface.reset(e);
+                } else {
+                    std::cerr << appname << ": unrecognized geometry argument for '" << arg << "'" << std::endl;
+                    return -1;
+                }
+            } else if (strncmp(arg, wrapping_quadrant_arg, sizeof(wrapping_quadrant_arg)-1) == 0) {
+                wrapping_quadrant = std::string{arg + (sizeof(wrapping_quadrant_arg)-1)};
+            } else if (strncmp(arg, final_time_arg, sizeof(final_time_arg)-1) == 0) {
+                char const* val = arg + (sizeof(final_time_arg)-1);
+                final_time = safe_parse_double(val);
             } else if (strncmp(arg, record_arg, sizeof(record_arg)-1) == 0)  {
                 record_to = std::string{arg + (sizeof(record_arg)-1)};
             } else if (strcmp(arg, no_viz_arg) == 0) {
                 visualize = false;
             } else if (strcmp(arg, help_arg) == 0) {
                 std::cout << usage << std::endl;
+                std::cout << help << std::endl;
                 return 0;
             } else {
                 std::cerr << appname << ": unrecognized argument '" << arg << "'" << std::endl;
@@ -131,6 +237,9 @@ int main(int argc, char** argv) {
             }
         }
     }
+
+    wrapSurface->set_quadrant(wrapping_quadrant);
+
 
     // Create a new OpenSim model on earth.
     auto model = Model();
@@ -153,10 +262,9 @@ int main(int argc, char** argv) {
     // Attach the pelvis to ground with a vertical slider joint, and attach the
     // pelvis, thigh, and shank bodies to each other with pin joints.
     Vec3 sliderOrientation(0, 0, SimTK::Pi / 2.);
-    Vec3 bodyOffset = body_offset;
-    auto sliderLeft = new SliderJoint("sliderLeft", model.getGround(), bodyOffset,
+    auto sliderLeft = new SliderJoint("sliderLeft", model.getGround(), lhs_offset,
                                       sliderOrientation, *bodyLeft, Vec3(0), sliderOrientation);
-    auto sliderRight = new SliderJoint("sliderRight", model.getGround(), -bodyOffset,
+    auto sliderRight = new SliderJoint("sliderRight", model.getGround(), rhs_offset,
                                        sliderOrientation, *bodyRight, Vec3(0), sliderOrientation);
     auto weldGround = new WeldJoint("weldGround", model.getGround(), *bodyGround);
 
@@ -209,20 +317,12 @@ int main(int argc, char** argv) {
                                                  SimTK::Transform(Vec3(0, 1.0, 0)));
     // Add the wrapping surface
     // auto wrapSurface = new ak_WrapCylinder();
-    auto wrapSurface = new WrapCylinder();
-//    auto wrapSurface = new WrapEllipsoid();
-    wrapSurface->setAllPropertiesUseDefault(true);
-    wrapSurface->set_radius(0.08);
-    wrapSurface->set_length(1);
-//    wrapSurface->set_dimensions(Vec3(tc.CYLINDER_RADIUS,tc.CYLINDER_RADIUS,1));
-    wrapSurface->set_xyz_body_rotation(Vec3(0.0, 0.0, 0.0));
-    wrapSurface->set_quadrant("+y");
-    wrapSurface->setName("wrapSurface");
-    wrappingFrame->addWrapObject(wrapSurface);
+    auto wrap_ptr = wrapSurface.release();
+    wrappingFrame->addWrapObject(wrap_ptr);
     bodyGround->addComponent(wrappingFrame);
 
     // Configure the vastus muscle to wrap over the patella.
-    spring->updGeometryPath().addPathWrap(*wrapSurface);
+    spring->updGeometryPath().addPathWrap(*wrap_ptr);
 
     //auto spring = new PathSpring("path_spring", 1.0, 50, 0.1);
     //spring->updGeometryPath() = *muscle->getGeometryPath().clone();
@@ -278,7 +378,7 @@ int main(int argc, char** argv) {
         viz.setMode(SimTK::Visualizer::RealTime);
     }
 
-    simulate(model, state, 10.0);
+    simulate(model, state, final_time);
 
     return 0;
 }

@@ -1,6 +1,7 @@
 #include "Simbody.h"
 
 #include <fstream>
+#include <regex>
 
 using SimTK::MultibodySystem;
 using SimTK::SimbodyMatterSubsystem;
@@ -71,21 +72,63 @@ static double safe_parse_double(char const* s) {
     return v;
 }
 
-static const char ox_arg[] = "--offset-x=";
-static const char oy_arg[] = "--offset-y=";
-static const char oz_arg[] = "--offset-z=";
+static const char lhs_arg[] = "--lhs=";
+static const char rhs_arg[] = "--rhs=";
+static const char geometry_arg[] = "--geometry=";
+static const char wrapping_quadrant_arg[] = "--wrapping-quadrant=";
+static const char final_time_arg[] = "--final-time=";
 static const char record_arg[] = "--record-to=";
 static const char no_viz_arg[] = "--no-visualizer";
-static const char appname[] = "joris_in-simbody";
 static const char help_arg[] = "--help";
+static const char appname[] = "simbody_wrapping";
 static const char usage[] =
-R"(usage : joris_in-simbody [--offset-x=<val>] [--offset-y=<val>] [--offset-z=<val>]
-                         [--record-to=<path>] [--no-visualizer] [--help])";
+R"(usage: simbody_wrapping [--lhs=[<x>,<y>,<z>]] [--rhs=[<x>,<y>,<z>]]
+                        [--geometry=<geometry>] [--wrapping-quadrant=<direction>]
+                        [--final-time=<secs>] [--record-to=<path>]
+                        [--no-visualizer] [--help])";
+static const char help[] =
+R"(OPTIONS
+    --lhs=[<x>,<y>,<z>]
+        Coordinates of the left-hand vertical slider (default: [-0.4, 0.0, 0.0])
+
+    --rhs=[<x>,<y>,<z>]
+        Coordinates of the right-hand vertical slider (default: [+0.4, 0.0, 0.0])
+
+    --geometry=<geometry>
+        Specify wrapping geometry. Allowed <geometry> inputs:
+
+            cylinder[<radius>]
+            ellipsoid[<x>,<y>,<z>]
+
+        Defaults to: cylinder[0.08]
+
+    --wrapping-quadrant=<quadrant>
+        IGNORED: only used by OpenSim backend
+
+    --final-time=<secs>
+        Set the final simulation time in seconds (default: 10)
+
+    --record-to=<path>
+        Record a CSV containing the positions of the sliding masses to <path>
+
+    --no-visualizer
+        Disable the GUI visualizer
+
+    --help
+        Show this help
+)";
 
 int main(int argc, char** argv) {
-    auto body_offset = Vec3{0.4, 0.0, 0.0};
+    double final_time = 10.0;
+    auto lhs_offset = Vec3{-0.4, 0.0, 0.0};
+    auto rhs_offset = Vec3{+0.4, 0.0, 0.0};
     std::string record_to = "";
     bool visualize = true;
+    double obstacle_radius = 0.08;
+    std::unique_ptr<ContactGeometry> geometry =
+        std::make_unique<ContactGeometry::Cylinder>(obstacle_radius);
+    auto contact_hint_lhs = Vec3{-obstacle_radius, 0.001, 0.0};
+    auto contact_hint_rhs = Vec3{+obstacle_radius, 0.001, 0.0};
 
     // basic CLI parsing
     {
@@ -93,24 +136,71 @@ int main(int argc, char** argv) {
         for (int nargs = argc - 1; nargs > 0; --nargs, ++args) {
             char const* arg = *args;
 
-            if (strncmp(arg, ox_arg , sizeof(ox_arg)-1) == 0) {
-                char const* val = arg + (sizeof(ox_arg)-1);
-                double v = safe_parse_double(val);
-                body_offset.set(0, v);
-            } else if (strncmp(arg, oy_arg, sizeof(oy_arg)-1) == 0) {
-                char const* val = arg + (sizeof(oy_arg)-1);
-                double v = safe_parse_double(val);
-                body_offset.set(1, v);
-            } else if (strncmp(arg, oz_arg, sizeof(oz_arg)-1) == 0) {
-                char const* val = arg + (sizeof(oz_arg)-1);
-                double v = safe_parse_double(val);
-                body_offset.set(2, v);
+            if (strncmp(arg, lhs_arg , sizeof(lhs_arg)-1) == 0) {
+                char const* val = arg + (sizeof(lhs_arg)-1);
+                std::cmatch m;
+                std::regex patt{R"(\[([^,]+),([^,]+),([^\]]+)\])"};
+
+                if (std::regex_match(val, m, patt)) {
+                    double x = safe_parse_double(m[1].str().c_str());
+                    double y = safe_parse_double(m[2].str().c_str());
+                    double z = safe_parse_double(m[3].str().c_str());
+                    lhs_offset = Vec3{x, y, z};
+                } else {
+                    std::cerr << appname << ": invalid coordiate specified for '" << arg << "'" << std::endl;
+                    return -1;
+                }
+            } else if (strncmp(arg, rhs_arg, sizeof(rhs_arg)-1) == 0) {
+                char const* val = arg + (sizeof(rhs_arg)-1);
+                std::cmatch m;
+                std::regex patt{R"(\[([^,]+),([^,]+),([^\]]+)\])"};
+
+                if (std::regex_match(val, m, patt)) {
+                    double x = safe_parse_double(m[1].str().c_str());
+                    double y = safe_parse_double(m[2].str().c_str());
+                    double z = safe_parse_double(m[3].str().c_str());
+                    rhs_offset = Vec3{x, y, z};
+                } else {
+                    std::cerr << appname << ": invalid coordiate specified for '" << arg << "'" << std::endl;
+                    return -1;
+                }
+            } else if (strncmp(arg, geometry_arg, sizeof(geometry_arg)-1) == 0) {
+                char const* val = arg + sizeof(geometry_arg)-1;
+                std::cmatch m;
+
+                std::regex cylinder_patt{R"(cylinder\[([^\]]+)\])"};
+                std::regex ellipsoid_patt{R"(ellipsoid\[([^,]+),([^,]+),([^\]]+)\])"};
+
+                if (std::regex_match(val, m, cylinder_patt)) {
+                    double r = safe_parse_double(m[1].str().c_str());
+
+                    geometry = std::make_unique<ContactGeometry::Cylinder>(r);
+                    contact_hint_lhs = Vec3{-r, 0.001, 0.0};
+                    contact_hint_rhs = Vec3{+r, 0.001, 0.0};
+                } else if (std::regex_match(val, m, ellipsoid_patt)) {
+                    double x = safe_parse_double(m[1].str().c_str());
+                    double y = safe_parse_double(m[2].str().c_str());
+                    double z = safe_parse_double(m[3].str().c_str());
+
+                    geometry = std::make_unique<ContactGeometry::Ellipsoid>(Vec3{x, y, z});
+                    contact_hint_lhs = Vec3{-x, 0.001, 0.0};
+                    contact_hint_rhs = Vec3{+x, 0.001, 0.0};
+                } else {
+                    std::cerr << appname << ": unrecognized geometry argument for '" << arg << "'" << std::endl;
+                    return -1;
+                }
+            } else if (strncmp(arg, wrapping_quadrant_arg, sizeof(wrapping_quadrant_arg)-1) == 0) {
+                std::cerr << appname << " WARNING: " << arg << ": not used by simbody backend";
+            } else if (strncmp(arg, final_time_arg, sizeof(final_time_arg)-1) == 0) {
+                char const* val = arg + (sizeof(final_time_arg)-1);
+                final_time = safe_parse_double(val);
             } else if (strncmp(arg, record_arg, sizeof(record_arg)-1) == 0)  {
                 record_to = std::string{arg + (sizeof(record_arg)-1)};
             } else if (strcmp(arg, no_viz_arg) == 0) {
                 visualize = false;
             } else if (strcmp(arg, help_arg) == 0) {
                 std::cout << usage << std::endl;
+                std::cout << help << std::endl;
                 return 0;
             } else {
                 std::cerr << appname << ": unrecognized argument '" << arg << "'" << std::endl;
@@ -150,7 +240,7 @@ int main(int argc, char** argv) {
     );
     auto slider_left = MobilizedBody::Slider{
         matter.Ground(),
-        Transform{slider_orientation, -body_offset},
+        Transform{slider_orientation, lhs_offset},
         body_left,
         Transform{slider_orientation, Vec3{0.0, 0.0, 0.0}},
     };
@@ -177,7 +267,7 @@ int main(int argc, char** argv) {
     );
     auto slider_right = MobilizedBody::Slider{
         matter.Ground(),
-        Transform{slider_orientation, body_offset},
+        Transform{slider_orientation, rhs_offset},
         body_right,
         Transform{slider_orientation, Vec3{0.0, 0.0, 0.0}},
     };
@@ -208,21 +298,16 @@ int main(int argc, char** argv) {
 
 
     // obstacle in cable path
-    double obstacle_radius = 0.08;
+
     auto obstacle_surface = CableObstacle::Surface{
         cable,
         matter.Ground(),
         Transform{Rotation{}, Vec3{0.0, 1.0, 0.0}},
-        ContactGeometry::Cylinder{obstacle_radius},
+        *geometry
     };
     // obstacles *require* contact point hints so that the wrapping cable
     // knows how to start wrapping over it
-    obstacle_surface.setContactPointHints(
-        // lhs
-        Vec3{-obstacle_radius, 0.001, 0.0},
-        // rhs
-        Vec3{+obstacle_radius, 0.001, 0.0}
-    );
+    obstacle_surface.setContactPointHints(contact_hint_lhs, contact_hint_rhs);
 
 
     // set up visualization to match OpenSim (but without OpenSim) see:
