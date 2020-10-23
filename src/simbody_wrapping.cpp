@@ -356,7 +356,7 @@ int main(int argc, char** argv) {
             auto integrator = RungeKuttaMersonIntegrator{system};
             auto time_stepper = SimTK::TimeStepper{system, integrator};
             time_stepper.initialize(s);
-            time_stepper.stepTo(10.0);
+            time_stepper.stepTo(final_time);
         }
     } else {
         system.realizeTopology();
