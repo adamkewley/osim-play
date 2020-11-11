@@ -51,13 +51,14 @@ struct Position_recorder final : public PeriodicEventReporter {
             return f;
         }()} {
 
-        ofile << "time,lhs,rhs" << std::endl;
+        ofile << "time,lhs,rhs,prescribeQcalls" << std::endl;
     }
 
     void handleEvent(const State& s) const override {
-        ofile << s.getTime() << ","
-              << lhs.getQ(s) << ","
-              << rhs.getQ(s) << std::endl;
+        ofile << s.getTime() << ','
+              << lhs.getQ(s) << ','
+              << rhs.getQ(s) << ','
+              << mbs.getNumPrescribeQCalls() << std::endl;
     }
 };
 

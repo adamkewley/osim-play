@@ -1,1 +1,10 @@
-export LD_LIBRARY_PATH="${PWD}/opensim-core/RelWithDebInfo-opensim-install/lib/"
+#!/usr/bin/env sh
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+export PATH="${DIR}:${PATH}"
+export LD_LIBRARY_PATH="${DIR}/../opensim-core/RelWithDebInfo-opensim-install/lib/"
+
+if [[ ! "$OSTYPE" == "darwin"* ]]; then
+	# enables running `perf stat` without having to `sudo` the opensim cmd
+	sudo bash -c 'echo "-1" > "/proc/sys/kernel/perf_event_paranoid"'
+fi

@@ -30,14 +30,17 @@ using SimTK::Real;
 using SimTK::State;
 
 struct Position_analysis final : public Analysis {
+    SimTK::MultibodySystem const& mbs;
     SliderJoint const& lhs;
     SliderJoint const& rhs;
     std::string path;
     std::ofstream ofile;
 
     Position_analysis(std::string _path,
+                      SimTK::MultibodySystem const& _mbs,
                       SliderJoint const& _lhs,
                       SliderJoint const& _rhs) :
+        mbs{_mbs},
         lhs{_lhs},
         rhs{_rhs},
         path{std::move(_path)},
@@ -48,18 +51,19 @@ struct Position_analysis final : public Analysis {
             return f;
         }()} {
 
-        ofile << "time,lhs,rhs" << std::endl;
+        ofile << "time,lhs,rhs,prescribeQcalls" << std::endl;
     }
 
     int step(const SimTK::State& s, int stepNumber) override {
-        ofile << s.getTime() << ","
-              << lhs.getCoordinate().getValue(s) << ","
-              << rhs.getCoordinate().getValue(s) << std::endl;
+        ofile << s.getTime() << ','
+              << lhs.getCoordinate().getValue(s) << ','
+              << rhs.getCoordinate().getValue(s) << ','
+              << mbs.getNumPrescribeQCalls() << std::endl;
         return 0;
     }
 
     Position_analysis* clone() const {
-        return new Position_analysis{path, lhs, rhs};
+        return new Position_analysis{path, mbs, lhs, rhs};
     }
 
     const std::string& getConcreteClassName() const {
@@ -364,6 +368,7 @@ int main(int argc, char** argv) {
     if (not record_to.empty()) {
         auto* analysis = new Position_analysis{
             record_to,
+            model.getSystem(),
             *sliderLeft,
             *sliderRight,
         };

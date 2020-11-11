@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+
+import pandas
+import matplotlib
+import matplotlib.pyplot as plt
+import argparse
+
+p = argparse.ArgumentParser(description="plot two wrapping datasets against eachover")
+p.add_argument("simbody_data", help="data output from ./simbody_wrapping")
+p.add_argument("opensim_data", help="data output from ./opensim_wrapping")
+
+args = p.parse_args()
+
+df_simbody = pandas.read_csv(args.simbody_data)
+df_opensim = pandas.read_csv(args.opensim_data)
+
+fig = plt.figure()
+ax = plt.subplot(1,1,1)
+ax2 = ax.twinx()
+
+#fig, ax = matplotlib.pyplot.subplots()
+df_simbody.plot(ax=ax, kind="line", x=0, y=1)
+df_simbody.plot(ax=ax2, kind="line", x=0, y=3)
+
+df_opensim.plot(ax=ax, kind="line", x=0, y=1, title="fu")
+df_opensim.plot(ax=ax2, kind="line", x=0, y=3)
+
+ax.set_xlabel("Simulation Time [unitless]")
+ax.set_ylabel("lhs.getCoordinate().getValue() or lhs.getQ() [unitless]")
+ax.legend(["Simbody (cables)", "OpenSim"])
+ax.set_title("Q coordinate of left slider, and number of prescribe Q calls, during a simulation")
+
+ax2.set_ylabel("system.getNumPrescribeQCalls()")
+ax2.legend(["Simbody (cables)", "OpenSim"])
+
+matplotlib.pyplot.show()
+matplotlib.pyplot.close()
