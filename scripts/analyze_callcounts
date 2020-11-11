@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -xeuo pipefail
+
+# the functions to plot
+funcs=("Multibody.*?::realize")
+
+for be in "simbody" "opensim"; do
+    extract_callcount callgrind.${be} ${funcs[@]} | grep -v "CALLCOUNT_NOT_FOUND" > "${be}_callcount"
+done
+
+plot_callcounts -o callcount.png simbody_callcount opensim_callcount
+
