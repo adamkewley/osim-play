@@ -8,6 +8,7 @@ import argparse
 p = argparse.ArgumentParser(description="plot two wrapping datasets against eachover")
 p.add_argument("simbody_data", help="data output from ./simbody_wrapping")
 p.add_argument("opensim_data", help="data output from ./opensim_wrapping")
+p.add_argument("-o", "--outdir", help="save plot to specified location (default: show, rather than save)")
 
 args = p.parse_args()
 
@@ -15,23 +16,60 @@ df_simbody = pandas.read_csv(args.simbody_data)
 df_opensim = pandas.read_csv(args.opensim_data)
 
 fig = plt.figure()
-ax = plt.subplot(1,1,1)
-ax2 = ax.twinx()
+fig.suptitle("Wrapping Implementation comparison: OpenSim vs. Simbody Cables")
 
-#fig, ax = matplotlib.pyplot.subplots()
-df_simbody.plot(ax=ax, kind="line", x=0, y=1)
-df_simbody.plot(ax=ax2, kind="line", x=0, y=3)
+# subplot: lhs slider position
+if True:
+    pos_ax = plt.subplot(3, 1, 1)
+    df_simbody.plot(ax=pos_ax, kind="line", x=0, y=1)
+    df_opensim.plot(ax=pos_ax, kind="line", x=0, y=1)
+    pos_ax.set_ylabel("Q coordinate [unitless]", rotation='horizontal', ha='right')
+    pos_ax.legend(["Simbody (cables)", "OpenSim"], framealpha=0.0)
+    pos_ax.spines['top'].set_visible(False)
+    pos_ax.spines['bottom'].set_visible(False)
+    pos_ax.spines['right'].set_visible(False)
+    pos_ax.get_xaxis().set_visible(False)
 
-df_opensim.plot(ax=ax, kind="line", x=0, y=1, title="fu")
-df_opensim.plot(ax=ax2, kind="line", x=0, y=3)
+# subplot: prescribeQ calls
+if True:
+    pq_ax = plt.subplot(3, 1, 2)
+    df_simbody.plot(ax=pq_ax, kind="line", x=0, y=3)
+    df_opensim.plot(ax=pq_ax, kind="line", x=0, y=3)
+    pq_ax.set_ylabel("getNumPrescribeQCalls()", rotation='horizontal', ha='right')
+    pq_ax.legend().remove()
+    pq_ax.spines['top'].set_visible(False)
+    pq_ax.spines['bottom'].set_visible(False)
+    pq_ax.spines['right'].set_visible(False)
+    pq_ax.get_xaxis().set_visible(False)
 
-ax.set_xlabel("Simulation Time [unitless]")
-ax.set_ylabel("lhs.getCoordinate().getValue() or lhs.getQ() [unitless]")
-ax.legend(["Simbody (cables)", "OpenSim"])
-ax.set_title("Q coordinate of left slider, and number of prescribe Q calls, during a simulation")
+    xmax = df_simbody['time'].max()
+    sb_ymax = df_simbody['prescribeQcalls'].max()
+    os_ymax = df_opensim['prescribeQcalls'].max()
+    plt.annotate(
+        str(sb_ymax),
+        (xmax, sb_ymax))
+    plt.annotate(
+        str(os_ymax),
+        (xmax, os_ymax))
 
-ax2.set_ylabel("system.getNumPrescribeQCalls()")
-ax2.legend(["Simbody (cables)", "OpenSim"])
+# subplot: cable length
+if True:
+    cl_ax = plt.subplot(3, 1, 3)
+    df_simbody.plot(ax=cl_ax, kind="line", x=0, y=4)
+    df_opensim.plot(ax=cl_ax, kind="line", x=0, y=4)
+    cl_ax.set_xlabel("Simulation Time [unitless]")
+    cl_ax.set_ylabel("Cable length [unitless]", rotation='horizontal', ha='right')
+    cl_ax.legend().remove()
+    cl_ax.spines['top'].set_visible(False)
+    cl_ax.spines['right'].set_visible(False)
 
-matplotlib.pyplot.show()
+fig.subplots_adjust(hspace=0.1)
+
+if args.outdir:
+    fig.subplots_adjust(left=0.3)
+    fig.set_size_inches(8, 4)
+    plt.savefig(fname=args.outdir, dpi=300)
+else:
+    plt.show()
+
 matplotlib.pyplot.close()

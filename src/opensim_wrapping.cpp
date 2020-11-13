@@ -31,6 +31,7 @@ using SimTK::State;
 
 struct Position_analysis final : public Analysis {
     SimTK::MultibodySystem const& mbs;
+    GeometryPath const& springPath;
     SliderJoint const& lhs;
     SliderJoint const& rhs;
     std::string path;
@@ -38,9 +39,11 @@ struct Position_analysis final : public Analysis {
 
     Position_analysis(std::string _path,
                       SimTK::MultibodySystem const& _mbs,
+                      GeometryPath const& _springPath,
                       SliderJoint const& _lhs,
                       SliderJoint const& _rhs) :
         mbs{_mbs},
+        springPath{_springPath},
         lhs{_lhs},
         rhs{_rhs},
         path{std::move(_path)},
@@ -51,19 +54,20 @@ struct Position_analysis final : public Analysis {
             return f;
         }()} {
 
-        ofile << "time,lhs,rhs,prescribeQcalls" << std::endl;
+        ofile << "time,lhs,rhs,prescribeQcalls,path_len" << std::endl;
     }
 
     int step(const SimTK::State& s, int stepNumber) override {
         ofile << s.getTime() << ','
               << lhs.getCoordinate().getValue(s) << ','
               << rhs.getCoordinate().getValue(s) << ','
-              << mbs.getNumPrescribeQCalls() << std::endl;
+              << mbs.getNumPrescribeQCalls() << ','
+              << springPath.getLength(s) << std::endl;
         return 0;
     }
 
     Position_analysis* clone() const {
-        return new Position_analysis{path, mbs, lhs, rhs};
+        return new Position_analysis{path, mbs, springPath, lhs, rhs};
     }
 
     const std::string& getConcreteClassName() const {
@@ -369,6 +373,7 @@ int main(int argc, char** argv) {
         auto* analysis = new Position_analysis{
             record_to,
             model.getSystem(),
+            spring->getGeometryPath(),
             *sliderLeft,
             *sliderRight,
         };
@@ -380,7 +385,6 @@ int main(int argc, char** argv) {
         SimTK::Visualizer& viz = model.updVisualizer().updSimbodyVisualizer();
         viz.setBackgroundType(viz.SolidColor);
         viz.setBackgroundColor(SimTK::White);
-        viz.setMode(SimTK::Visualizer::RealTime);
     }
 
     simulate(model, state, final_time);

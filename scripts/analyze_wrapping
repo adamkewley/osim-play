@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+bes=("simbody" "opensim")
+
+for be in ${bes[@]}; do
+    ./${be}_wrapping --lhs=[-0.4,0.0,0.8] --record-to="data_${be}"
+done
+
+../scripts/plot_wrapping -o plot.png "${bes[@]/#/data_}"
+xdg-open plot.png

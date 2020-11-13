@@ -31,6 +31,7 @@ using SimTK::Real;
 
 struct Position_recorder final : public PeriodicEventReporter {
     MultibodySystem const& mbs;
+    CablePath const& cable;
     MobilizedBody::Slider const& lhs;
     MobilizedBody::Slider const& rhs;
     mutable std::ofstream ofile;  // mutable because SimTK lol
@@ -38,10 +39,12 @@ struct Position_recorder final : public PeriodicEventReporter {
     Position_recorder(Real interval,
                       std::string path,
                       MultibodySystem const& _mbs,
+                      CablePath const& _cable,
                       MobilizedBody::Slider const& _lhs,
                       MobilizedBody::Slider const& _rhs) :
         PeriodicEventReporter{interval},
         mbs{_mbs},
+        cable{_cable},
         lhs{_lhs},
         rhs{_rhs},
         ofile{[&]() {
@@ -51,14 +54,15 @@ struct Position_recorder final : public PeriodicEventReporter {
             return f;
         }()} {
 
-        ofile << "time,lhs,rhs,prescribeQcalls" << std::endl;
+        ofile << "time,lhs,rhs,prescribeQcalls,path_len" << std::endl;
     }
 
     void handleEvent(const State& s) const override {
         ofile << s.getTime() << ','
               << lhs.getQ(s) << ','
               << rhs.getQ(s) << ','
-              << mbs.getNumPrescribeQCalls() << std::endl;
+              << mbs.getNumPrescribeQCalls()  << ','
+              << cable.getCableLength(s) << std::endl;
     }
 };
 
@@ -320,6 +324,7 @@ int main(int argc, char** argv) {
                                     0.01,
                                     record_to,
                                     system,
+                                    cable,
                                     slider_left,
                                     slider_right
                                 });
@@ -339,7 +344,6 @@ int main(int argc, char** argv) {
         help.setIsScreenText(true);
         visualizer.addDecoration(SimTK::MobilizedBodyIndex(0), SimTK::Vec3(0), help);
         visualizer.setShowSimTime(true);
-        visualizer.setMode(Visualizer::RealTime);
 
         // set up system
         system.realizeTopology();
