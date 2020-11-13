@@ -67,6 +67,10 @@ add_executable(simbody_wrapping
 )
 target_link_libraries(simbody_wrapping PRIVATE common)
 
+add_executable(rajagopal_wrapping_comparison
+    src/rajagopal_wrapping_comparison.cpp
+)
+target_link_libraries(rajagopal_wrapping_comparison PRIVATE common)
 
 # BUILD LIB PATHS:
 #
