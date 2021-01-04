@@ -5,12 +5,13 @@
 #include <OpenSim/Simulation/SimulationUtilities.h>
 
 static const char HELP[] =
-R"(usage: fd [--help][--no-visualizer][--disable-wrapping] model final_time
+R"(usage: fd [--help][--no-visualizer][--no-wrapping][--format=<format>]
+          [--assembly-accuracy=<accuracy>] model final_time
 )";
 
 static bool skip_prefix(char const* s, char const* prefix, char const** out) {
     do {
-        if (*prefix == '\0') {
+        if (*prefix == '\0' and (*s == '\0' or *s == '=')) {
             *out = s;
             return true;
         }
@@ -30,6 +31,37 @@ static bool safe_parse_double(char const* s, double* out) {
     return true;
 }
 
+struct Log_emitter final : public OpenSim::Analysis {
+    OpenSim::Model const& model;
+    char const* format;
+
+    Log_emitter(OpenSim::Model const& _model, char const* _format) :
+        model{_model},
+        format{_format} {
+
+        if (!_format) {
+            throw std::runtime_error{"nullptr format passed to Log_emitter"};
+        }
+        std::cerr << "AKINFO: time,prescribeQcalls" << std::endl;
+    }
+
+    int step(const SimTK::State& s, int) override {
+        std::cerr << "AKINFO: "
+                  << s.getTime() << ','
+                  << model.getMultibodySystem().getNumPrescribeQCalls() << std::endl;
+        return 0;
+    }
+
+    Log_emitter* clone() const override {
+        return new Log_emitter{model, format};
+    }
+
+    const std::string& getConcreteClassName() const override {
+        static std::string name = "Log_emitter";
+        return name;
+    }
+};
+
 int main(int argc, char** argv) {
     // skip app name
     --argc;
@@ -37,6 +69,9 @@ int main(int argc, char** argv) {
 
     bool visualize = true;
     bool disable_wrapping = false;
+    char const* format = nullptr;
+    static constexpr double assembly_accuracy_senteniel = -1337.0;
+    double assembly_accuracy = assembly_accuracy_senteniel;
 
     while (argc > 0) {
         char const* arg = argv[0];
@@ -50,10 +85,44 @@ int main(int argc, char** argv) {
             return 0;
         } else if (!strcmp(arg, "--no-visualizer")) {
             visualize = false;
-        } else if (!strcmp(arg, "--disable-wrapping")) {
+        } else if (!strcmp(arg, "--no-wrapping")) {
             disable_wrapping = true;
+        } else if (skip_prefix(arg, "--format", &arg)) {
+            if (*arg == '=') {
+                ++arg;
+                format = arg;
+            } else if (*arg == '\0') {
+                if (argc < 2) {
+                    std::cerr << "fd: no format string given for --format" << std::endl;
+                    std::cerr << HELP;
+                    return -1;
+                }
+                format = argv[1];
+                --argc;
+                ++argv;
+            }
+        } else if (skip_prefix(arg, "--assembly-accuracy", &arg)) {
+            char const* val = nullptr;
+
+            if (*arg == '=') {
+                val = ++arg;
+            } else if (*arg == '\0') {
+                if (argc < 2) {
+                    std::cerr << "fd: no assembly accuracy value given for --assembly-accuract" << std::endl;
+                    return -1;
+                }
+                val = argv[1];
+                --argc;
+                ++argv;
+            }
+
+            if (not safe_parse_double(val, &assembly_accuracy)) {
+                std::cerr << "fd: invalid assembly accuracy given for --assembly-accuracy" << std::endl;
+                return -1;
+            }
         } else {
             std::cerr << "fd: unknown option: " << arg << std::endl;
+            std::cerr << HELP;
             return -1;
         }
 
@@ -97,6 +166,10 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (assembly_accuracy != assembly_accuracy_senteniel) {
+        model.set_assembly_accuracy(assembly_accuracy);
+    }
+
     if (visualize) {
         model.setUseVisualizer(true);
     }
@@ -104,14 +177,18 @@ int main(int argc, char** argv) {
     SimTK::State& state = model.initSystem();
     model.equilibrateMuscles(state);
 
+    if (format) {
+        model.addAnalysis(new Log_emitter{model, format});
+    }
+
     if (visualize) {
         model.updMatterSubsystem().setShowDefaultGeometry(true);
         SimTK::Visualizer& viz = model.updVisualizer().updSimbodyVisualizer();
         viz.setBackgroundType(viz.SolidColor);
         viz.setBackgroundColor(SimTK::White);
-        //viz.setMode(SimTK::Visualizer::RealTime);
     }
 
     OpenSim::simulate(model, state, final_time);
+
     return 0;
 }

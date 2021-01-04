@@ -39,38 +39,29 @@ add_executable(OpenSimPartyDemoCable
 target_link_libraries(OpenSimPartyDemoCable PUBLIC common)
 
 
-add_executable(expt_wrap
-    src/expt_wrap.cpp
-)
+add_executable(expt_wrap src/expt_wrap.cpp)
 target_link_libraries(expt_wrap PUBLIC common)
 
-
-add_executable(size_of_objects
-    src/size_of_objects.cpp
-)
+add_executable(size_of_objects src/size_of_objects.cpp)
 target_link_libraries(size_of_objects PUBLIC common)
 
-
-add_executable(study_simbody_4_pendulum
-    src/study_simbody_4_pendulum.cpp
-)
+add_executable(study_simbody_4_pendulum src/study_simbody_4_pendulum.cpp)
 target_link_libraries(study_simbody_4_pendulum PUBLIC common)
 
-
-add_executable(opensim_wrapping
-    src/opensim_wrapping.cpp
-)
+add_executable(opensim_wrapping src/opensim_wrapping.cpp)
 target_link_libraries(opensim_wrapping PRIVATE common)
 
-add_executable(simbody_wrapping
-    src/simbody_wrapping.cpp
-)
+add_executable(simbody_wrapping src/simbody_wrapping.cpp)
 target_link_libraries(simbody_wrapping PRIVATE common)
 
-add_executable(rajagopal_wrapping_comparison
-    src/rajagopal_wrapping_comparison.cpp
-)
-target_link_libraries(rajagopal_wrapping_comparison PRIVATE common)
+add_executable(fd src/fd.cpp)
+target_link_libraries(fd PRIVATE common)
+
+add_executable(joris2 src/joris2.cpp)
+target_link_libraries(joris2 PRIVATE common)
+
+add_executable(joris2_simbody src/joris2_simbody.cpp)
+target_link_libraries(joris2_simbody PRIVATE common)
 
 # BUILD LIB PATHS:
 #

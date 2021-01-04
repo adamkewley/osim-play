@@ -19,6 +19,8 @@ import argparse
 p = argparse.ArgumentParser(description="compare call count of function calls")
 p.add_argument("simbody_calls", help="delimited file of ${FUNCTION}~${NUM_CALLS} for simbody")
 p.add_argument("opensim_calls", help="delimited file of ${FUNCTION}~${NUM_CALLS} for opensim")
+p.add_argument("--lhs-name", help="name of first dataset", default="simbody cables")
+p.add_argument("--rhs-name", help="name of second dataset", default="opensim")
 p.add_argument("--separator", help="record separator. Expected line format is ${FUNCTION}${SEP}${NUM_CALLS}", default="~")
 p.add_argument("-o", "--output", help="save plot image to specified path (default: show it, rather than saving it)")
 
@@ -28,13 +30,13 @@ dfa = pandas.read_csv(
     args.simbody_calls,
     sep=args.separator,
     header=None,
-    names=["func", "simbody cables"]
+    names=["func", args.lhs_name]
 )
 dfb = pandas.read_csv(
     args.opensim_calls,
     sep=args.separator,
     header=None,
-    names=["func", "opensim"]
+    names=["func", args.rhs_name]
 )
 
 # join both call count files together

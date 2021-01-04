@@ -3,11 +3,24 @@
 set -xeuo pipefail
 
 # the functions to plot
-funcs=("Multibody.*?::realize")
+funcs=(
+    "Multibody.*?::realizeSubsystemPositionImpl"
+    "Multibody.*?::realizeSubsystemTimeImpl"
+    "Multibody.*?::realizeVelocityImpl"
+    "AbstractIntegratorRep::stepTo"
+#    "malloc"
+#    "MatrixHelper<double>::updElt"
+)
 
-for be in "simbody" "opensim"; do
+if [[ $# -eq 0 ]]; then
+    bes=("simbody" "opensim")
+else
+    bes=("$@")
+fi
+
+for be in ${bes[@]}; do
     extract_callcount callgrind.${be} ${funcs[@]} | grep -v "CALLCOUNT_NOT_FOUND" > "${be}_callcount"
 done
 
-plot_callcounts -o callcount.png simbody_callcount opensim_callcount
+plot_callcounts --lhs-name=${bes[0]} --rhs-name=${bes[1]} -o callcount.png ${bes[@]/%/_callcount}
 
